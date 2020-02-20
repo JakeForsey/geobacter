@@ -1,4 +1,9 @@
-data/cache
-data/osm
-checkpoints/
-tensorboard/
+data/cache/*
+data/osm/*
+checkpoints/*
+tensorboard/*
+
+!data/cache/.gitkeep
+!data/osm/.gitkeep
+!checkpoints/.gitkeep
+!tensorboard/.gitkeep
