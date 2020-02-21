@@ -6,7 +6,6 @@ from pathlib import Path
 from PIL import Image
 import random
 from typing import Tuple
-from uuid import uuid4
 
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Normalize

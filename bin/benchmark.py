@@ -1,16 +1,21 @@
 from abc import ABC
 from abc import abstractmethod
 import asyncio
+import math
 from pathlib import Path
-import random
-from typing import Iterable
 from PIL import Image
+import random
+import sys
+from typing import Iterable
+from functools import lru_cache
 
-import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.linear_model import ElasticNetCV
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
+from sklearn.preprocessing import LabelEncoder
 import torch
 
 from geobacter.inference.model.triplet import ResNetEmbedding
@@ -22,6 +27,7 @@ from geobacter.inference.dataset.osm import key
 
 CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-9e743660-309c-43fd-b50b-9efbc9bdde9d_embedding_100000.pth'
 HOUSE_PRICES = "data/benchmarks/house_prices/data.csv"
+TRAIN_SAMPLES = [10, 100, 1_000, 10_000]
 embedding_model = ResNetEmbedding(16)
 embedding_model.load_state_dict(torch.load(CHECKPOINT))
 embedding_model.zero_grad()
@@ -30,10 +36,12 @@ embedding_model.cuda()
 
 
 class Benchmark(ABC):
+    @property
     @abstractmethod
     def X(self) -> np.ndarray:
         pass
 
+    @property
     @abstractmethod
     def y(self) -> np.ndarray:
         pass
@@ -46,6 +54,8 @@ class Benchmark(ABC):
     def _cache_directory(self) -> Path:
         pass
 
+    @property
+    @lru_cache()
     def embeddings(self) -> np.ndarray:
         self._cache_directory().mkdir(exist_ok=True, parents=True)
 
@@ -53,7 +63,6 @@ class Benchmark(ABC):
 
         async def point_to_embedding(point):
             file_path = self._cache_directory() / key(point, 16)
-
             if not file_path.is_file():
                 _, tile = await cache_tile(
                     self._cache_directory(),
@@ -64,76 +73,212 @@ class Benchmark(ABC):
             else:
                 tile = Image.open(file_path)
 
+            # Temp block whilst I figure out how to clear
+            # mapnik cache.
+            if len(tile.size) == 2:
+                rgb_tile = Image.new("RGB", tile.size)
+                rgb_tile.paste(tile)
+                tile = rgb_tile
+
             image = BASE_TRANSFORMS(tile)
             image = image.cuda()
             return embedding_model(image.unsqueeze(0)).detach().cpu().numpy()
 
+        from itertools import islice
+
+        def chunk(it, size):
+            it = iter(it)
+            return iter(lambda: tuple(islice(it, size)), ())
+
         loop = asyncio.get_event_loop()
-        coroutines = [point_to_embedding(point) for point in self._points()]
-        embeddings = loop.run_until_complete(
-            asyncio.gather(*coroutines)
-        )
+        embeddings = []
+        for points in chunk(self._points(), 100):
+            coroutines = [point_to_embedding(point) for point in points]
+            embeddings.extend(
+                loop.run_until_complete(
+                    asyncio.gather(*coroutines)
+                )
+            )
 
         return np.concatenate(embeddings)
 
 
 class HousePriceBenchmark(Benchmark):
-    def __init__(self, file_path: Path):
-        self.df = pd.read_csv(file_path).sample(100)
+    def __init__(self):
+        self.df = pd.read_csv(Path("data/benchmarks/house_prices/data.csv"))
 
+    @property
     def X(self):
         return self.df[["sqft_living", "bedrooms", "bathrooms"]]
 
+    @property
     def y(self):
-        return self.df[["price"]]
+        return self.df["price"]
 
     def _points(self) -> Iterable[Point]:
         return [(row["long"], row["lat"]) for idx, row in self.df.iterrows()]
 
     def _cache_directory(self) -> Path:
-        return Path("data/cache/benchmarks/house_price")
+        return Path("data/cache/benchmarks/house_prices")
 
 
-def evaluate(benchmark: Benchmark, seed=1):
+class CarPriceBenchmark(Benchmark):
+    def __init__(self):
+        df = pd.read_csv(Path("data/benchmarks/car_prices/data.csv"))
+
+        self.df = df[
+            df["lat"].between(46.124742, 48.880009) &
+            df["long"].between(-124.472116, -117.176261)
+        ].copy()
+
+    @property
+    def X(self):
+        X = self.df[[
+            "manufacturer",
+            "year",
+            "odometer",
+        ]].copy()
+        numeric_dtypes = ['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+        categorical_columns = []
+        for col in X.columns.values.tolist():
+            if X[col].dtype not in numeric_dtypes:
+                categorical_columns.append(col)
+                X[col] = X[col].astype(str).fillna("NA")
+            else:
+                X[col] = X[col].fillna(X[col].mean())
+
+        for col in categorical_columns:
+            X[col] = LabelEncoder().fit_transform(X[col].values)
+
+        X['year'] = (X['year'] - 1900).astype(int)
+        X['odometer'] = X['odometer'].astype(int)
+
+        return X.copy()
+
+    @property
+    def y(self):
+        return self.df["price"]
+
+    def _points(self) -> Iterable[Point]:
+        return [(row["long"], row["lat"]) for idx, row in self.df.iterrows()]
+
+    def _cache_directory(self) -> Path:
+        return Path("data/cache/benchmarks/car_prices")
+
+
+def evaluate(benchmark: Benchmark, train_size: int, seed=1):
+
     def _score(X_train, X_test, y_train, y_test):
-
-        m = ElasticNetCV(cv=5)
+        m = RandomForestRegressor()
         m.fit(X_train, y_train)
 
         y_pred = m.predict(X_test)
         return r2_score(y_test, y_pred)
 
     X_train, X_test, y_train, y_test, embeddings_train, embeddings_test = train_test_split(
-        benchmark.X(), benchmark.y(), benchmark.embeddings(),
-        test_size=0.2,
+        benchmark.X, benchmark.y, benchmark.embeddings,
+        train_size=train_size,
         random_state=seed
     )
-    print(X_train.shape)
-    print(y_train.shape)
-    print(embeddings_train.shape)
+    print(f"Training samples: {len(X_train)}")
+    print(f"Testing samples: {len(X_test)}")
 
-    print("Testing performance of X")
-    X_score = _score(X_train, X_test, y_train, y_test)
+    baseline_score = _score(X_train, X_test, y_train, y_test)
 
-    print("Testing performance of embeddings")
     embeddings_score = _score(embeddings_train, embeddings_test, y_train, y_test)
 
-    print("Testing performance of X and embeddings")
     combined_train = np.concatenate([embeddings_train, X_train], axis=1)
     combined_test = np.concatenate([embeddings_test, X_test], axis=1)
     combined_score = _score(combined_train, combined_test, y_train, y_test)
 
-    print(X_score, embeddings_score, combined_score)
+    return {
+        "train_size": train_size,
+        "baseline_score": baseline_score,
+        "embeddings_score": embeddings_score,
+        "combined_score": combined_score,
+    }
+
+
+BENCHMARKS = {
+    "HousePrice": HousePriceBenchmark,
+    "CarPrice": CarPriceBenchmark
+}
+
+
+def benchmark_from_name(name: str):
+    return BENCHMARKS[name]()
 
 
 def run():
     random.seed()
+    benchmark = benchmark_from_name(sys.argv[1])
 
-    evaluate(
-        HousePriceBenchmark(
-            Path("data/benchmarks/house_prices/data.csv")
-        )
+    # results = [{'train_size': 10, 'baseline_score': 205161936.92804074, 'embeddings_score': 214600590.65082082, 'combined_score': 210226430.32083264}, {'train_size': 100, 'baseline_score': 165026683.71304765, 'embeddings_score': 195860592.89620247, 'combined_score': 149466121.35509643}, {'train_size': 1000, 'baseline_score': 127832818.05935825, 'embeddings_score': 154662908.88608417, 'combined_score': 118873809.24728106}, {'train_size': 10000, 'baseline_score': 88796490.04219109, 'embeddings_score': 138480576.19776294, 'combined_score': 83991446.87797993}, {'train_size': 10, 'baseline_score': 168334755.54410255, 'embeddings_score': 234727750.14422667, 'combined_score': 203676938.43009853}, {'train_size': 100, 'baseline_score': 163084136.47468862, 'embeddings_score': 193718346.9897234, 'combined_score': 149031993.87075284}, {'train_size': 1000, 'baseline_score': 127349466.18659735, 'embeddings_score': 152614545.04581943, 'combined_score': 120527263.51661347}, {'train_size': 10000, 'baseline_score': 80592420.19248538, 'embeddings_score': 136406282.38250282, 'combined_score': 82427695.7411659}, {'train_size': 10, 'baseline_score': 234150692.57971254, 'embeddings_score': 261371957.14583448, 'combined_score': 202052559.2870032}, {'train_size': 100, 'baseline_score': 171358586.88289893, 'embeddings_score': 189243108.2399285, 'combined_score': 151590432.94680554}, {'train_size': 1000, 'baseline_score': 159044879.2130711, 'embeddings_score': 160645831.08412796, 'combined_score': 118286496.13325292}, {'train_size': 10000, 'baseline_score': 88006314.70122786, 'embeddings_score': 138165216.84902355, 'combined_score': 85791009.52635176}]
+    results = []
+    for seed in [1, 2, 3]:
+        for train_size in TRAIN_SAMPLES:
+            print(f"Evaluating benchmark with {train_size} training examples (seed={seed}).")
+            results.append(evaluate(benchmark, train_size, seed))
+
+    print(results)
+    df = pd.DataFrame(results)
+
+    plt.scatter(
+        df.train_size.apply(lambda x: math.log(x, 10)),
+        df.baseline_score,
+        c="magenta",
+        marker="D",
+        alpha=0.5,
+        label="features only",
     )
+    plt.scatter(
+        df.train_size.apply(lambda x: math.log(x, 10)),
+        df.embeddings_score,
+        c="cyan",
+        marker="s",
+        alpha=0.5,
+        label="embeddings only",
+    )
+    plt.scatter(
+        df.train_size.apply(lambda x: math.log(x, 10)),
+        df.combined_score,
+        c="blue",
+        marker="^",
+        alpha=0.5,
+        label="embeddings and features",
+    )
+
+    summary = df.groupby("train_size").mean().reset_index()
+    plt.plot(
+        summary.train_size.apply(lambda x: math.log(x, 10)),
+        summary.baseline_score,
+        "--",
+        c="magenta",
+        label="features only"
+    )
+    plt.plot(
+        summary.train_size.apply(lambda x: math.log(x, 10)),
+        summary.embeddings_score,
+        "--",
+        c="cyan",
+        label="embeddings only",
+    )
+    plt.plot(
+        summary.train_size.apply(lambda x: math.log(x, 10)),
+        summary.combined_score,
+        "--",
+        c="blue",
+        label="embeddings and features",
+    )
+    plt.plot()
+    plt.xlabel("log₁₀(train samples)")
+    plt.ylabel("R²", rotation=0)
+    plt.xticks([math.log(i, 10) for i in TRAIN_SAMPLES])
+    plt.ylim([0.0, 1.0])
+    plt.tight_layout()
+    plt.legend()
+    plt.show()
+    plt.savefig(f"{benchmark.__class__.__name__}.png")
 
 
 if __name__ == "__main__":
