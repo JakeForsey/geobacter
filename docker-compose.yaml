@@ -1,9 +1,9 @@
 version: '3'
 
 services:
-  map:
+  mapnik:
     build:
-      context: geobacter/mapnik/openstreetmap-tile-server/
+      context: geobacter/mapnik/
       dockerfile: Dockerfile
     image: overv/openstreetmap-tile-server
     volumes:
