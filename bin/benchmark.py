@@ -1,13 +1,14 @@
 from abc import ABC
 from abc import abstractmethod
 import asyncio
+from itertools import islice
+from functools import lru_cache
 import math
 from pathlib import Path
 from PIL import Image
 import random
 import sys
 from typing import Iterable
-from functools import lru_cache
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -83,8 +84,6 @@ class Benchmark(ABC):
             image = BASE_TRANSFORMS(tile)
             image = image.cuda()
             return embedding_model(image.unsqueeze(0)).detach().cpu().numpy()
-
-        from itertools import islice
 
         def chunk(it, size):
             it = iter(it)
@@ -211,74 +210,76 @@ def benchmark_from_name(name: str):
 
 def run():
     random.seed()
-    benchmark = benchmark_from_name(sys.argv[1])
 
-    # results = [{'train_size': 10, 'baseline_score': 205161936.92804074, 'embeddings_score': 214600590.65082082, 'combined_score': 210226430.32083264}, {'train_size': 100, 'baseline_score': 165026683.71304765, 'embeddings_score': 195860592.89620247, 'combined_score': 149466121.35509643}, {'train_size': 1000, 'baseline_score': 127832818.05935825, 'embeddings_score': 154662908.88608417, 'combined_score': 118873809.24728106}, {'train_size': 10000, 'baseline_score': 88796490.04219109, 'embeddings_score': 138480576.19776294, 'combined_score': 83991446.87797993}, {'train_size': 10, 'baseline_score': 168334755.54410255, 'embeddings_score': 234727750.14422667, 'combined_score': 203676938.43009853}, {'train_size': 100, 'baseline_score': 163084136.47468862, 'embeddings_score': 193718346.9897234, 'combined_score': 149031993.87075284}, {'train_size': 1000, 'baseline_score': 127349466.18659735, 'embeddings_score': 152614545.04581943, 'combined_score': 120527263.51661347}, {'train_size': 10000, 'baseline_score': 80592420.19248538, 'embeddings_score': 136406282.38250282, 'combined_score': 82427695.7411659}, {'train_size': 10, 'baseline_score': 234150692.57971254, 'embeddings_score': 261371957.14583448, 'combined_score': 202052559.2870032}, {'train_size': 100, 'baseline_score': 171358586.88289893, 'embeddings_score': 189243108.2399285, 'combined_score': 151590432.94680554}, {'train_size': 1000, 'baseline_score': 159044879.2130711, 'embeddings_score': 160645831.08412796, 'combined_score': 118286496.13325292}, {'train_size': 10000, 'baseline_score': 88006314.70122786, 'embeddings_score': 138165216.84902355, 'combined_score': 85791009.52635176}]
-    results = []
-    for seed in [1, 2, 3]:
-        for train_size in TRAIN_SAMPLES:
-            print(f"Evaluating benchmark with {train_size} training examples (seed={seed}).")
-            results.append(evaluate(benchmark, train_size, seed))
+    for name in BENCHMARKS:
+        benchmark = benchmark_from_name(name)
 
-    print(results)
-    df = pd.DataFrame(results)
+        # results = [{'train_size': 10, 'baseline_score': 205161936.92804074, 'embeddings_score': 214600590.65082082, 'combined_score': 210226430.32083264}, {'train_size': 100, 'baseline_score': 165026683.71304765, 'embeddings_score': 195860592.89620247, 'combined_score': 149466121.35509643}, {'train_size': 1000, 'baseline_score': 127832818.05935825, 'embeddings_score': 154662908.88608417, 'combined_score': 118873809.24728106}, {'train_size': 10000, 'baseline_score': 88796490.04219109, 'embeddings_score': 138480576.19776294, 'combined_score': 83991446.87797993}, {'train_size': 10, 'baseline_score': 168334755.54410255, 'embeddings_score': 234727750.14422667, 'combined_score': 203676938.43009853}, {'train_size': 100, 'baseline_score': 163084136.47468862, 'embeddings_score': 193718346.9897234, 'combined_score': 149031993.87075284}, {'train_size': 1000, 'baseline_score': 127349466.18659735, 'embeddings_score': 152614545.04581943, 'combined_score': 120527263.51661347}, {'train_size': 10000, 'baseline_score': 80592420.19248538, 'embeddings_score': 136406282.38250282, 'combined_score': 82427695.7411659}, {'train_size': 10, 'baseline_score': 234150692.57971254, 'embeddings_score': 261371957.14583448, 'combined_score': 202052559.2870032}, {'train_size': 100, 'baseline_score': 171358586.88289893, 'embeddings_score': 189243108.2399285, 'combined_score': 151590432.94680554}, {'train_size': 1000, 'baseline_score': 159044879.2130711, 'embeddings_score': 160645831.08412796, 'combined_score': 118286496.13325292}, {'train_size': 10000, 'baseline_score': 88006314.70122786, 'embeddings_score': 138165216.84902355, 'combined_score': 85791009.52635176}]
+        results = []
+        for seed in [1, 2, 3]:
+            for train_size in TRAIN_SAMPLES:
+                print(f"Evaluating benchmark with {train_size} training examples (seed={seed}).")
+                results.append(evaluate(benchmark, train_size, seed))
 
-    plt.scatter(
-        df.train_size.apply(lambda x: math.log(x, 10)),
-        df.baseline_score,
-        c="magenta",
-        marker="D",
-        alpha=0.5,
-        label="features only",
-    )
-    plt.scatter(
-        df.train_size.apply(lambda x: math.log(x, 10)),
-        df.embeddings_score,
-        c="cyan",
-        marker="s",
-        alpha=0.5,
-        label="embeddings only",
-    )
-    plt.scatter(
-        df.train_size.apply(lambda x: math.log(x, 10)),
-        df.combined_score,
-        c="blue",
-        marker="^",
-        alpha=0.5,
-        label="embeddings and features",
-    )
+        print(results)
+        df = pd.DataFrame(results)
 
-    summary = df.groupby("train_size").mean().reset_index()
-    plt.plot(
-        summary.train_size.apply(lambda x: math.log(x, 10)),
-        summary.baseline_score,
-        "--",
-        c="magenta",
-        label="features only"
-    )
-    plt.plot(
-        summary.train_size.apply(lambda x: math.log(x, 10)),
-        summary.embeddings_score,
-        "--",
-        c="cyan",
-        label="embeddings only",
-    )
-    plt.plot(
-        summary.train_size.apply(lambda x: math.log(x, 10)),
-        summary.combined_score,
-        "--",
-        c="blue",
-        label="embeddings and features",
-    )
-    plt.plot()
-    plt.xlabel("log₁₀(train samples)")
-    plt.ylabel("R²", rotation=0)
-    plt.xticks([math.log(i, 10) for i in TRAIN_SAMPLES])
-    plt.ylim([0.0, 1.0])
-    plt.tight_layout()
-    plt.legend()
-    plt.show()
-    plt.savefig(f"{benchmark.__class__.__name__}.png")
+        plt.scatter(
+            df.train_size.apply(lambda x: math.log(x, 10)),
+            df.baseline_score,
+            c="magenta",
+            marker="D",
+            alpha=0.5,
+            label="features only",
+        )
+        plt.scatter(
+            df.train_size.apply(lambda x: math.log(x, 10)),
+            df.embeddings_score,
+            c="cyan",
+            marker="s",
+            alpha=0.5,
+            label="embeddings only",
+        )
+        plt.scatter(
+            df.train_size.apply(lambda x: math.log(x, 10)),
+            df.combined_score,
+            c="blue",
+            marker="^",
+            alpha=0.5,
+            label="embeddings and features",
+        )
+
+        summary = df.groupby("train_size").mean().reset_index()
+        plt.plot(
+            summary.train_size.apply(lambda x: math.log(x, 10)),
+            summary.baseline_score,
+            "--",
+            c="magenta",
+            label="features only"
+        )
+        plt.plot(
+            summary.train_size.apply(lambda x: math.log(x, 10)),
+            summary.embeddings_score,
+            "--",
+            c="cyan",
+            label="embeddings only",
+        )
+        plt.plot(
+            summary.train_size.apply(lambda x: math.log(x, 10)),
+            summary.combined_score,
+            "--",
+            c="blue",
+            label="embeddings and features",
+        )
+        plt.plot()
+        plt.xlabel("log₁₀(train samples)")
+        plt.ylabel("R²", rotation=0)
+        plt.xticks([math.log(i, 10) for i in TRAIN_SAMPLES])
+        plt.ylim([0.0, 1.0])
+        plt.tight_layout()
+        plt.legend()
+        plt.savefig(f"{benchmark.__class__.__name__}.png")
+        plt.clf()
 
 
 if __name__ == "__main__":
