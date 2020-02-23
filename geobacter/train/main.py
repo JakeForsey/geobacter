@@ -1,4 +1,3 @@
-import collections
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,13 +14,12 @@ from sklearn.manifold import TSNE
 import torch
 from torch import optim
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import WeightedRandomSampler
 
-from geobacter.inference.model.triplet import ResNetTriplet
-from geobacter.inference.model.triplet import ResNetEmbedding
+from geobacter.inference.networks.resnet import ResNetTriplet
+from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.train.loss import TripletLoss
-from geobacter.inference.dataset.osm import OsmTileDataset
-from geobacter.inference.dataset.osm import DENORMALIZE
+from geobacter.inference.datasets.osm import OsmTileDataset
+from geobacter.inference.datasets.osm import DENORMALIZE
 
 BATCH_SIZE = 32
 TRAIN_EPOCHS = 50

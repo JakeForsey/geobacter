@@ -7,7 +7,6 @@ import math
 from pathlib import Path
 from PIL import Image
 import random
-import sys
 from typing import Iterable
 
 import matplotlib.pyplot as plt
@@ -19,11 +18,11 @@ from sklearn.metrics import r2_score
 from sklearn.preprocessing import LabelEncoder
 import torch
 
-from geobacter.inference.model.triplet import ResNetEmbedding
-from geobacter.inference.dataset.osm import Point
-from geobacter.inference.dataset.osm import cache_tile
-from geobacter.inference.dataset.osm import BASE_TRANSFORMS
-from geobacter.inference.dataset.osm import key
+from geobacter.inference.networks.resnet import ResNetEmbedding
+from geobacter.inference.datasets.osm import Point
+from geobacter.inference.datasets.osm import cache_point
+from geobacter.inference.datasets.osm import BASE_TRANSFORMS
+from geobacter.inference.datasets.osm import key
 
 
 CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-9e743660-309c-43fd-b50b-9efbc9bdde9d_embedding_100000.pth'
@@ -65,7 +64,7 @@ class Benchmark(ABC):
         async def point_to_embedding(point):
             file_path = self._cache_directory() / key(point, 16)
             if not file_path.is_file():
-                _, tile = await cache_tile(
+                _, tile = await cache_point(
                     self._cache_directory(),
                     point,
                     16,
