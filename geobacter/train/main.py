@@ -1,6 +1,8 @@
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
+import geopandas as gpd
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
@@ -20,10 +22,13 @@ from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.train.loss import TripletLoss
 from geobacter.inference.datasets.osm import OsmTileDataset
 from geobacter.inference.datasets.osm import DENORMALIZE
+from geobacter.inference.mapnik import get_extent
 
 BATCH_SIZE = 32
 TRAIN_EPOCHS = 50
-DATA_LOADER_WORKERS = 2
+DATA_LOADER_WORKERS = 4
+gdf = gpd.read_file("data/coastline/coastline.geojson")
+AOI = gdf.loc[gdf["adm0_a3"] == "GBR"].geometry.unary_union
 matplotlib.use('Agg')
 
 
@@ -40,14 +45,22 @@ def main():
 
     print("Initialising training dataset.")
     train_dataset = OsmTileDataset(
-        Path("data/cache/train"),
-        100_000
+        AOI,
+        sample_count=500_000,
+        buffer=100.0,
+        distance=250.0,
+        seed=1,
+        load_extent_fn=partial(get_extent, cache_dir=Path("data/cache/train"), zoom=17)
     )
 
     print("Initialising testing dataset.")
     test_dataset = OsmTileDataset(
-        Path("data/cache/test"),
-        2_000
+        AOI,
+        sample_count=5_000,
+        buffer=100.0,
+        distance=250.0,
+        seed=2,
+        load_extent_fn=partial(get_extent, cache_dir=Path("data/cache/test"), zoom=17)
     )
 
     # unique_colours = [train_dataset.unique_colours(i) for i in range(len(train_dataset))]

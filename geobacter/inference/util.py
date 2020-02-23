@@ -3,8 +3,10 @@ import random
 from typing import Tuple
 
 from shapely.geometry import Polygon
+from shapely.geometry import Point as ShapelyPoint
+import utm
 
-from geobacter.inference.geotypes import Extent, Point
+from geobacter.inference.geotypes import Extent, Meters, Point
 
 
 def point_to_slippy_tile(point: Point, zoom: int) -> Tuple[int, int]:
@@ -28,22 +30,36 @@ def slippy_tile_to_point(xtile: int, ytile: int, zoom: int) -> Point:
     lon_deg = xtile / n * 360.0 - 180.0
     lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * ytile / n)))
     lat_deg = math.degrees(lat_rad)
-    return lat_deg, lon_deg
+    return lon_deg, lat_deg
 
 
-def buffer_point(point: Point, buffer: float) -> Extent:
-    return point[0] - buffer, point[1] - buffer, point[0] + buffer, point[1] + buffer
+def buffer_point(point: Point, buffer: Meters) -> Extent:
+    x, y, zone_number, zone_letter = utm.from_latlon(point[1], point[0])
+    left = x - buffer
+    upper = y - buffer
+    right = x + buffer
+    lower = y + buffer
+
+    upper, left = utm.to_latlon(left, upper, zone_number, zone_letter)
+    lower, right = utm.to_latlon(right, lower, zone_number, zone_letter)
+
+    return left, upper, right, lower
 
 
-def random_point(aoi: Polygon, seed: int = 1) -> Point:
-    random.seed(seed)
+def random_point(aoi: Polygon) -> Point:
     minx, miny, maxx, maxy = aoi.bounds
     while True:
-        point = Point(random.uniform(minx, maxx), random.uniform(miny, maxy))
+        point = ShapelyPoint(random.uniform(minx, maxx), random.uniform(miny, maxy))
         if aoi.contains(point):
-            return point
+            return point.x, point.y
 
 
-def random_translation(point: Point, seed: int = 1) -> Point:
-    random.seed(seed)
-    return point
+def random_translation(point: Point, distance: Meters) -> Point:
+    x, y, zone_number, zone_letter = utm.from_latlon(point[1], point[0])
+
+    angle = math.radians(random.randrange(0, 360))
+    x += distance * math.sin(angle)
+    y += distance * math.cos(angle)
+
+    lat, lon = utm.to_latlon(x, y, zone_number, zone_letter)
+    return lon, lat

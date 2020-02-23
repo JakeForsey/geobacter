@@ -8,7 +8,6 @@ from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Normalize
 from torchvision.transforms import ToTensor
 from torchvision.transforms import Compose
-from torchvision.transforms import RandomCrop
 from torchvision.transforms import Resize
 from torchvision.transforms import RandomHorizontalFlip
 from torchvision.transforms import RandomVerticalFlip
@@ -16,15 +15,14 @@ from torchvision.transforms import RandomVerticalFlip
 from geobacter.inference.util import random_point
 from geobacter.inference.util import random_translation
 from geobacter.inference.util import buffer_point
-from geobacter.inference.geotypes import Extent
+from geobacter.inference.geotypes import Extent, Meters
 
 AUGMENTATIONS = Compose([
     RandomHorizontalFlip(),
     RandomVerticalFlip()
 ])
 BASE_TRANSFORMS = Compose([
-    RandomCrop(128 + 64),
-    Resize(128),
+    Resize((128, 128)),
     ToTensor(),
     Normalize(
         [0.485, 0.456, 0.406],
@@ -45,11 +43,14 @@ class OsmTileDataset(Dataset):
             self,
             aoi: Polygon,
             sample_count: int,
-            buffer: float,
+            buffer: Meters,
+            distance: Meters,
+            seed: int,
             load_extent_fn: Callable[[Extent], Awaitable['Image']]
     ):
-        anchor_points = [random_point(aoi, seed=1) for _ in range(sample_count)]
-        positive_points = [random_translation(point, seed=1) for point in anchor_points]
+        random.seed(seed)
+        anchor_points = [random_point(aoi) for _ in range(sample_count)]
+        positive_points = [random_translation(point, distance) for point in anchor_points]
 
         self.sample_count = sample_count
         self.anchor_extents = [buffer_point(point, buffer) for point in anchor_points]
@@ -61,11 +62,10 @@ class OsmTileDataset(Dataset):
 
     def __getitem__(self, index: int) -> Tuple['Image', 'Image', 'Image']:
         async def load_triplet():
-            return (
-                await self.load_extent(self.anchor_extents[index]),
-                await self.load_extent(self.positive_extents[index]),
-                await self.load_extent(random.choice(self.anchor_extents + self.positive_extents))
-            )
+            a = await self.load_extent(self.anchor_extents[index])
+            p = await self.load_extent(self.positive_extents[index])
+            n = await self.load_extent(random.choice(self.anchor_extents + self.positive_extents))
+            return a, p, n
 
         loop = asyncio.get_event_loop()
         task = loop.create_task(load_triplet())

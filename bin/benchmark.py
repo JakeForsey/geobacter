@@ -19,10 +19,10 @@ from sklearn.preprocessing import LabelEncoder
 import torch
 
 from geobacter.inference.networks.resnet import ResNetEmbedding
-from geobacter.inference.datasets.osm import Point
-from geobacter.inference.datasets.osm import cache_point
+from geobacter.inference.mapnik import get_extent
+from geobacter.inference.geotypes import Point
+from geobacter.inference.util import buffer_point
 from geobacter.inference.datasets.osm import BASE_TRANSFORMS
-from geobacter.inference.datasets.osm import key
 
 
 CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-9e743660-309c-43fd-b50b-9efbc9bdde9d_embedding_100000.pth'
@@ -59,28 +59,13 @@ class Benchmark(ABC):
     def embeddings(self) -> np.ndarray:
         self._cache_directory().mkdir(exist_ok=True, parents=True)
 
-        semaphore = asyncio.Semaphore(20)
-
         async def point_to_embedding(point):
-            file_path = self._cache_directory() / key(point, 16)
-            if not file_path.is_file():
-                _, tile = await cache_point(
-                    self._cache_directory(),
-                    point,
-                    16,
-                    semaphore
-                )
-            else:
-                tile = Image.open(file_path)
-
-            # Temp block whilst I figure out how to clear
-            # mapnik cache.
-            if len(tile.size) == 2:
-                rgb_tile = Image.new("RGB", tile.size)
-                rgb_tile.paste(tile)
-                tile = rgb_tile
-
-            image = BASE_TRANSFORMS(tile)
+            image = get_extent(
+                buffer_point(point, 100.0),
+                self._cache_directory(),
+                17
+            )
+            image = BASE_TRANSFORMS(image)
             image = image.cuda()
             return embedding_model(image.unsqueeze(0)).detach().cpu().numpy()
 
@@ -90,7 +75,7 @@ class Benchmark(ABC):
 
         loop = asyncio.get_event_loop()
         embeddings = []
-        for points in chunk(self._points(), 100):
+        for points in chunk(self._points(), 10):
             coroutines = [point_to_embedding(point) for point in points]
             embeddings.extend(
                 loop.run_until_complete(

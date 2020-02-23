@@ -19,6 +19,8 @@ geojson = "*"
 grequests = "*"
 httpx = "*"
 shapely = "*"
+geopandas = "*"
+utm = "*"
 
 [requires]
 python_version = "3.7"
