@@ -3,6 +3,7 @@ from pathlib import Path
 from PIL import Image
 
 import httpx
+
 from geobacter.inference.constants import TILE_WIDTH, TILE_HEIGHT
 from geobacter.inference.geotypes import Extent
 from geobacter.inference.util import point_to_slippy_tile

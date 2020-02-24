@@ -7,20 +7,19 @@ verify_ssl = true
 jupyter = "*"
 pandas = "*"
 sklearn = "*"
-torch = "*"
 pytorch-ignite = "*"
 matplotlib = "*"
-
-[packages]
-torchvision = "*"
-geotiler = "*"
+geopandas = "*"
 tensorboard = "*"
 geojson = "*"
-grequests = "*"
+
+[packages]
+torch = "*"
+torchvision = "*"
 httpx = "*"
 shapely = "*"
-geopandas = "*"
 utm = "*"
+flask-restful = "*"
 
 [requires]
 python_version = "3.7"

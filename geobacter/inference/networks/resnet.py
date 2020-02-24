@@ -3,9 +3,9 @@ from torchvision import models
 
 
 class ResNetEmbedding(nn.Module):
-    def __init__(self, embedding_dims: int = 2):
+    def __init__(self, embedding_dims: int = 2, pretrained: bool = True):
         super().__init__()
-        resnet = models.resnet18(pretrained=True)
+        resnet = models.resnet18(pretrained=pretrained)
         num_ftrs = resnet.fc.in_features
         resnet.fc = nn.Linear(num_ftrs, embedding_dims)
         self.encoder = resnet
