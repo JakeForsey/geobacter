@@ -125,7 +125,7 @@ docker run \
     -p 8080:80 \
     -p 5432:5432 \
     -v openstreetmap-data:/var/lib/postgresql/12/main \
-    -d overv/openstreetmap-tile-server \
+    -d mapnik \
     run
 ```
 

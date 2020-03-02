@@ -1,9 +1,13 @@
 import asyncio
+from pathlib import Path
 from PIL import Image
+from PIL.Image import Image as PILImage
 import random
-from typing import Callable, Tuple, Awaitable
+from typing import Tuple
 
+import httpx
 from shapely.geometry import Polygon
+import torch
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Normalize
 from torchvision.transforms import ToTensor
@@ -15,7 +19,8 @@ from torchvision.transforms import RandomVerticalFlip
 from geobacter.inference.util import random_point
 from geobacter.inference.util import random_translation
 from geobacter.inference.util import buffer_point
-from geobacter.inference.geotypes import Extent, Meters
+from geobacter.inference.geotypes import Meters
+from geobacter.inference.mapnik import get_extent
 
 AUGMENTATIONS = Compose([
     RandomHorizontalFlip(),
@@ -46,7 +51,7 @@ class OsmTileDataset(Dataset):
             buffer: Meters,
             distance: Meters,
             seed: int,
-            load_extent_fn: Callable[[Extent], Awaitable['Image']]
+            cache_dir: Path
     ):
         random.seed(seed)
         anchor_points = [random_point(aoi) for _ in range(sample_count)]
@@ -55,21 +60,14 @@ class OsmTileDataset(Dataset):
         self.sample_count = sample_count
         self.anchor_extents = [buffer_point(point, buffer) for point in anchor_points]
         self.positive_extents = [buffer_point(point, buffer) for point in positive_points]
-        self.load_extent = load_extent_fn
+        self.cache_dir = cache_dir
+        self.client = httpx.AsyncClient()
 
     def __len__(self):
         return self.sample_count
 
-    def __getitem__(self, index: int) -> Tuple['Image', 'Image', 'Image']:
-        async def load_triplet():
-            a = await self.load_extent(self.anchor_extents[index])
-            p = await self.load_extent(self.positive_extents[index])
-            n = await self.load_extent(random.choice(self.anchor_extents + self.positive_extents))
-            return a, p, n
-
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(load_triplet())
-        anchor, positive, negative = loop.run_until_complete(task)
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        anchor, positive, negative = self.load_triplet_images(index)
 
         anchor = BASE_TRANSFORMS(
             AUGMENTATIONS(
@@ -88,3 +86,23 @@ class OsmTileDataset(Dataset):
         )
 
         return anchor, positive, negative
+
+    def load_triplet_images(self, index: int) -> Tuple[PILImage, PILImage, PILImage]:
+        async def _load_triplet():
+            a = await get_extent(
+                self.anchor_extents[index],
+                cache_dir=self.cache_dir, zoom=16, client=self.client
+            )
+            p = await get_extent(
+                self.positive_extents[index],
+                cache_dir=self.cache_dir, zoom=16, client=self.client
+            )
+            n = await get_extent(
+                random.choice(self.anchor_extents + self.positive_extents),
+                cache_dir=self.cache_dir, zoom=16, client=self.client
+            )
+            return a, p, n
+
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(_load_triplet())
+        return loop.run_until_complete(task)

@@ -40,16 +40,18 @@ class Embeddings(Resource):
         abort_if_token_incorrect(args["token"])
         point = args["lon"], args["lat"]
 
-        image_coroutine = request_extent(
-            buffer_point(point, 100.0),
-            17
-        )
-        loop = asyncio.new_event_loop()
-        task = loop.create_task(image_coroutine)
-        try:
-            image = loop.run_until_complete(task)
-        except httpx.exceptions.NetworkError:
-            abort(404, message=f"Mapnik server is down.")
+        async with httpx.AsyncClient() as client:
+            image_coroutine = request_extent(
+                buffer_point(point, 100.0),
+                16,
+                client
+            )
+            loop = asyncio.new_event_loop()
+            task = loop.create_task(image_coroutine)
+            try:
+                image = loop.run_until_complete(task)
+            except httpx.exceptions.NetworkError:
+                abort(404, message=f"Mapnik server is down.")
 
         image = BASE_TRANSFORMS(image)
         image = image.cuda()

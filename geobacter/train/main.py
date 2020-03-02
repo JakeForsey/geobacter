@@ -1,4 +1,3 @@
-from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,11 +21,9 @@ from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.train.loss import TripletLoss
 from geobacter.inference.datasets.osm import OsmTileDataset
 from geobacter.inference.datasets.osm import DENORMALIZE
-from geobacter.inference.mapnik import get_extent
 
 BATCH_SIZE = 32
 TRAIN_EPOCHS = 50
-DATA_LOADER_WORKERS = 4
 gdf = gpd.read_file("data/coastline/coastline.geojson")
 AOI = gdf.loc[gdf["adm0_a3"] == "GBR"].geometry.unary_union
 matplotlib.use('Agg')
@@ -35,51 +32,44 @@ matplotlib.use('Agg')
 def main():
     run_id = str(uuid4())
 
-    print("Initialising Embedding network.")
+    print("Initialising embedding network.")
     embedding_model = ResNetEmbedding(16)
     embedding_model.cuda()
 
-    print("Initialising Triplet network.")
+    print("Initialising triplet network.")
     triplet_model = ResNetTriplet(embedding_model)
     triplet_model.cuda()
 
     print("Initialising training dataset.")
     train_dataset = OsmTileDataset(
         AOI,
-        sample_count=500_000,
+        sample_count=200_000,
         buffer=100.0,
         distance=250.0,
         seed=1,
-        load_extent_fn=partial(get_extent, cache_dir=Path("data/cache/train"), zoom=17)
+        cache_dir=Path("data/cache/train")
     )
 
     print("Initialising testing dataset.")
     test_dataset = OsmTileDataset(
         AOI,
-        sample_count=5_000,
+        sample_count=2_000,
         buffer=100.0,
         distance=250.0,
         seed=2,
-        load_extent_fn=partial(get_extent, cache_dir=Path("data/cache/test"), zoom=17)
+        cache_dir=Path("data/cache/test")
     )
 
-    # unique_colours = [train_dataset.unique_colours(i) for i in range(len(train_dataset))]
-    # counter = collections.Counter(unique_colours)
-    # weights = [1 / counter[file_size] for file_size in unique_colours]
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
         pin_memory=True,
-        num_workers=DATA_LOADER_WORKERS,
-        # sampler=WeightedRandomSampler(
-        #     weights,
-        #     len(train_dataset)
-        # )
+        num_workers=8
     )
     test_loader = DataLoader(
         test_dataset,
         batch_size=1,
-        num_workers=DATA_LOADER_WORKERS
+        num_workers=8
     )
 
     triplet_loss = TripletLoss(1)

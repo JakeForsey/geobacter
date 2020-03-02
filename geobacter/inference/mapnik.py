@@ -11,32 +11,36 @@ from geobacter.inference.util import slippy_tile_to_point
 
 
 async def get_extent(
-    extent: Extent,
-    cache_dir: Path,
-    zoom: int,
+        extent: Extent,
+        cache_dir: Path,
+        zoom: int,
+        client: httpx.AsyncClient
 ) -> 'Image':
     path = extent_to_path(extent, cache_dir, zoom)
     if path.is_file():
         image = Image.open(path)
     else:
-        image = await cache_extent(extent, cache_dir, zoom)
+        image = await cache_extent(extent, cache_dir, zoom, client)
 
     return image
 
 
 async def cache_extent(
-    extent: Extent,
-    cache_dir: Path,
-    zoom: int
+        extent: Extent,
+        cache_dir: Path,
+        zoom: int,
+        client: httpx.AsyncClient
 ):
     path = extent_to_path(extent, cache_dir, zoom)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    image = await request_extent(extent, zoom)
+    image = await request_extent(extent, zoom, client)
     try:
         image.save(path)
     except SystemError:
         path.unlink()
         raise RuntimeWarning("Failed to save image to cache.")
+    except FileNotFoundError:
+        path.parent.mkdir(exist_ok=True, parents=True)
+        image.save(path)
 
     return image
 
@@ -49,7 +53,7 @@ def extent_to_path(
     return cache_dir / Path(f"{zoom}/{extent}.png")
 
 
-async def request_extent(extent: Extent, zoom: int) -> 'Image':
+async def request_extent(extent: Extent, zoom: int, client: httpx.AsyncClient) -> 'Image':
     x_min, y_max = point_to_slippy_tile((extent[0], extent[1]), zoom)
     x_max, y_min = point_to_slippy_tile((extent[2], extent[3]), zoom)
     x_max += 1
@@ -62,7 +66,7 @@ async def request_extent(extent: Extent, zoom: int) -> 'Image':
     tiles = {}
     for x in range(x_min, x_max):
         for y in range(y_min,  y_max):
-            tiles[(x, y)] = await request_tile(x, y, zoom)
+            tiles[(x, y)] = await request_tile(x, y, zoom, client)
 
     for (x, y), tile in tiles.items():
         mosaic.paste(
@@ -94,15 +98,14 @@ async def request_extent(extent: Extent, zoom: int) -> 'Image':
     return image
 
 
-async def request_tile(x: int, y: int, zoom: int) -> 'Image':
-    async with httpx.AsyncClient() as client:
-        url = f"http://localhost:8080/tile/{zoom}/{x}/{y}.png"
-        while True:
-            try:
-                response = await client.get(url, timeout=None)
-            except httpx.exceptions.ConnectionClosed:
-                print("Connection closed, retrying.")
+async def request_tile(x: int, y: int, zoom: int, client: httpx.AsyncClient) -> 'Image':
+    url = f"http://localhost:8080/tile/{zoom}/{x}/{y}.png"
+    while True:
+        try:
+            response = await client.get(url, timeout=None)
             if response.status_code == 200:
                 break
+        except httpx.exceptions.ConnectionClosed:
+            print("Connection closed, retrying.")
 
     return Image.open(BytesIO(response.content))

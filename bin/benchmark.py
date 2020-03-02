@@ -9,6 +9,7 @@ from PIL import Image
 import random
 from typing import Iterable
 
+import httpx
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -59,29 +60,31 @@ class Benchmark(ABC):
     def embeddings(self) -> np.ndarray:
         self._cache_directory().mkdir(exist_ok=True, parents=True)
 
-        async def point_to_embedding(point):
-            image = get_extent(
-                buffer_point(point, 100.0),
-                self._cache_directory(),
-                17
-            )
-            image = BASE_TRANSFORMS(image)
-            image = image.cuda()
-            return embedding_model(image.unsqueeze(0)).detach().cpu().numpy()
-
-        def chunk(it, size):
-            it = iter(it)
-            return iter(lambda: tuple(islice(it, size)), ())
-
-        loop = asyncio.get_event_loop()
-        embeddings = []
-        for points in chunk(self._points(), 10):
-            coroutines = [point_to_embedding(point) for point in points]
-            embeddings.extend(
-                loop.run_until_complete(
-                    asyncio.gather(*coroutines)
+        async with httpx.AsyncClient() as client:
+            async def point_to_embedding(point):
+                image = get_extent(
+                    buffer_point(point, 100.0),
+                    self._cache_directory(),
+                    16,
+                    client
                 )
-            )
+                image = BASE_TRANSFORMS(image)
+                image = image.cuda()
+                return embedding_model(image.unsqueeze(0)).detach().cpu().numpy()
+
+            def chunk(it, size):
+                it = iter(it)
+                return iter(lambda: tuple(islice(it, size)), ())
+
+            loop = asyncio.get_event_loop()
+            embeddings = []
+            for points in chunk(self._points(), 10):
+                coroutines = [point_to_embedding(point) for point in points]
+                embeddings.extend(
+                    loop.run_until_complete(
+                        asyncio.gather(*coroutines)
+                    )
+                )
 
         return np.concatenate(embeddings)
 

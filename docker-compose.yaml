@@ -5,11 +5,15 @@ services:
     build:
       context: geobacter/mapnik/
       dockerfile: Dockerfile
-    image: overv/openstreetmap-tile-server
+    image: mapnik
     volumes:
       - openstreetmap-data:/var/lib/postgresql/12/main
     ports:
       - "8080:80"
+      # Expose postgres database
+      # - "5432:5432"
+    environment:
+      - THREADS=12
     command: "run"
 
 volumes:
