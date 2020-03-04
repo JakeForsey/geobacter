@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import List
 
-import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
@@ -14,8 +13,6 @@ from geobacter.inference.datasets.osm import OsmTileDataset
 
 SAVE = False
 CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-667d4e74-24d8-4378-9058-037fc6682005_embedding_4692.pth'
-gdf = gpd.read_file("data/coastline/coastline.geojson")
-AOI = gdf.loc[gdf["adm0_a3"] == "GBR"].geometry.unary_union
 
 embedding_model = ResNetEmbedding(16)
 embedding_model.load_state_dict(torch.load(CHECKPOINT))
@@ -24,12 +21,8 @@ embedding_model.eval()
 embedding_model.cuda()
 
 dataset = OsmTileDataset(
-    AOI,
-    sample_count=20_000,
-    buffer=100.0,
-    distance=250.0,
-    seed=2,
-    cache_dir=Path("data/cache/embedding_math")
+    extents_path=Path("data/extents/test.pickle"),
+    cache_dir=Path("data/cache")
 )
 
 

@@ -1,10 +1,11 @@
 import asyncio
 from pathlib import Path
-from PIL.Image import Image as PILImage
+import pickle
 import random
-from typing import Tuple
+from typing import Tuple, List
 
 import httpx
+from PIL.Image import Image as PILImage
 import skimage.measure
 from shapely.geometry import Polygon
 import torch
@@ -19,7 +20,7 @@ from torchvision.transforms import RandomVerticalFlip
 from geobacter.inference.util import random_point
 from geobacter.inference.util import random_translation
 from geobacter.inference.util import buffer_point
-from geobacter.inference.geotypes import Meters
+from geobacter.inference.geotypes import Meters, Extent
 from geobacter.inference.mapnik import get_extent
 
 AUGMENTATIONS = Compose([
@@ -43,29 +44,20 @@ DENORMALIZE = Normalize(
 
 
 class OsmTileDataset(Dataset):
-
     def __init__(
             self,
-            aoi: Polygon,
-            sample_count: int,
-            buffer: Meters,
-            distance: Meters,
-            seed: int,
+            extents_path: Path,
             cache_dir: Path
     ):
-        random.seed(seed)
-        anchor_points = [random_point(aoi) for _ in range(sample_count)]
-        positive_points = [random_translation(point, distance) for point in anchor_points]
+        with extents_path.open("rb") as f:
+            self.anchor_extents, self.positive_extents = pickle.load(f)
 
-        self.sample_count = sample_count
-        self.anchor_extents = [buffer_point(point, buffer) for point in anchor_points]
-        self.positive_extents = [buffer_point(point, buffer) for point in positive_points]
         self.cache_dir = cache_dir
         self.client = httpx.AsyncClient()
         self.index_to_entropy = {}
 
     def __len__(self):
-        return self.sample_count
+        return len(self.anchor_extents)
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         anchor, positive, negative = self.load_triplet_images(index)
@@ -122,3 +114,20 @@ class OsmTileDataset(Dataset):
         loop = asyncio.get_event_loop()
         task = loop.create_task(_load_triplet())
         return loop.run_until_complete(task)
+
+
+def generate_extents(
+        aoi: Polygon,
+        sample_count: int,
+        buffer: Meters,
+        distance: Meters,
+        seed: int,
+) -> Tuple[List[Extent], List[Extent]]:
+    random.seed(seed)
+    anchor_points = [random_point(aoi) for _ in range(sample_count)]
+    positive_points = [random_translation(point, distance) for point in anchor_points]
+
+    anchor_extents = [buffer_point(point, buffer) for point in anchor_points]
+    positive_extents = [buffer_point(point, buffer) for point in positive_points]
+
+    return anchor_extents, positive_extents

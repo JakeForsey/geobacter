@@ -17,6 +17,7 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torch.utils.data import WeightedRandomSampler
 from torch.optim.lr_scheduler import ExponentialLR
+from tqdm.auto import trange
 
 from geobacter.inference.networks.resnet import ResNetTriplet
 from geobacter.inference.networks.resnet import ResNetEmbedding
@@ -26,8 +27,7 @@ from geobacter.inference.datasets.osm import DENORMALIZE
 
 BATCH_SIZE = 32
 TRAIN_EPOCHS = 50
-gdf = gpd.read_file("data/coastline/coastline.geojson")
-AOI = gdf.loc[gdf["adm0_a3"] == "GBR"].geometry.unary_union
+CACHE_DIR = Path("data/cache")
 matplotlib.use('Agg')
 
 
@@ -35,7 +35,7 @@ def main():
     run_id = str(uuid4())
 
     print("Initialising embedding network.")
-    embedding_model = ResNetEmbedding(32)
+    embedding_model = ResNetEmbedding(16)
     embedding_model.cuda()
 
     print("Initialising triplet network.")
@@ -44,26 +44,18 @@ def main():
 
     print("Initialising training dataset.")
     train_dataset = OsmTileDataset(
-        AOI,
-        sample_count=500_000,
-        buffer=100.0,
-        distance=250.0,
-        seed=1,
-        cache_dir=Path("data/cache/train")
+        extents_path=Path("data/extents/train.pickle"),
+        cache_dir=CACHE_DIR
     )
 
     print("Initialising testing dataset.")
     test_dataset = OsmTileDataset(
-        AOI,
-        sample_count=20_000,
-        buffer=100.0,
-        distance=250.0,
-        seed=2,
-        cache_dir=Path("data/cache/test")
+        extents_path=Path("data/extents/test.pickle"),
+        cache_dir=CACHE_DIR
     )
 
     print("Fetching image entropy values.")
-    entropy_values = [train_dataset.anchor_entropy(i) for i in range(len(train_dataset))]
+    entropy_values = [train_dataset.anchor_entropy(i) for i in trange(len(train_dataset), desc="calculating entropy")]
     # shannon_entropy of 1 means all pixels the same, these images have minimal value. Highest
     # value I've seen was around 3.
     weights = [entropy - 0.9 for entropy in entropy_values]
