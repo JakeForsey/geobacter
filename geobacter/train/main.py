@@ -15,6 +15,8 @@ from sklearn.manifold import TSNE
 import torch
 from torch import optim
 from torch.utils.data import DataLoader
+from torch.utils.data import WeightedRandomSampler
+from torch.optim.lr_scheduler import ExponentialLR
 
 from geobacter.inference.networks.resnet import ResNetTriplet
 from geobacter.inference.networks.resnet import ResNetEmbedding
@@ -33,7 +35,7 @@ def main():
     run_id = str(uuid4())
 
     print("Initialising embedding network.")
-    embedding_model = ResNetEmbedding(16)
+    embedding_model = ResNetEmbedding(32)
     embedding_model.cuda()
 
     print("Initialising triplet network.")
@@ -43,7 +45,7 @@ def main():
     print("Initialising training dataset.")
     train_dataset = OsmTileDataset(
         AOI,
-        sample_count=200_000,
+        sample_count=500_000,
         buffer=100.0,
         distance=250.0,
         seed=1,
@@ -53,31 +55,47 @@ def main():
     print("Initialising testing dataset.")
     test_dataset = OsmTileDataset(
         AOI,
-        sample_count=2_000,
+        sample_count=20_000,
         buffer=100.0,
         distance=250.0,
         seed=2,
         cache_dir=Path("data/cache/test")
     )
 
+    print("Fetching image entropy values.")
+    entropy_values = [train_dataset.anchor_entropy(i) for i in range(len(train_dataset))]
+    # shannon_entropy of 1 means all pixels the same, these images have minimal value. Highest
+    # value I've seen was around 3.
+    weights = [entropy - 0.9 for entropy in entropy_values]
+    print("Initialising sampler.")
+    sampler = WeightedRandomSampler(
+        weights=weights,
+        # Only the 50% most entropic images
+        num_samples=len(train_dataset) // 2,
+        # No duplicates in an epoch
+        replacement=False
+    )
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
         pin_memory=True,
-        num_workers=8
+        num_workers=4,
+        sampler=sampler
     )
     test_loader = DataLoader(
         test_dataset,
         batch_size=1,
-        num_workers=8
+        num_workers=4
     )
 
-    triplet_loss = TripletLoss(1)
+    triplet_loss = TripletLoss(margin=1)
 
     optimizer = optim.Adam(
         embedding_model.parameters(),
-        lr=1e-4
+        lr=1e-3
     )
+    scheduler = ExponentialLR(optimizer, 0.95)
 
     def train_step(engine, batch):
         embedding_model.train()
@@ -95,6 +113,7 @@ def main():
 
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         return {
             'loss': loss.item(),
@@ -112,9 +131,21 @@ def main():
         ),
         event_name=Events.ITERATION_COMPLETED
     )
+    # Plot some images with corresponding entropy values
+    for idx, entropy in enumerate(entropy_values):
+        if idx > 20:
+            break
+
+        image, _, _ = train_dataset[idx]
+        image = DENORMALIZE(image)
+        tb_logger.writer.add_image(
+            f"entropy_{entropy}",
+            image,
+            global_step=0
+        )
 
     @trainer.on(Events.EPOCH_STARTED)
-    def add_images(engine):
+    def add_test_images(engine):
         for idx, sample in enumerate(test_loader):
             if idx > 9:
                 break
@@ -148,8 +179,8 @@ def main():
                 loss = triplet_loss(anchor_embedding, positive_embedding, negative_embedding)
                 loss_total += loss.item()
 
-                # 200 is a good number of images to plot
-                if len(embeddings) < 200:
+                # 300 is a good number of images to plot
+                if len(embeddings) < 300:
                     embeddings.append(
                         anchor_embedding.squeeze().detach().cpu().numpy()
                     )
@@ -199,7 +230,7 @@ def main():
         require_empty=False
     )
     trainer.add_event_handler(
-        event_name=Events.EPOCH_COMPLETED(every=2),
+        event_name=Events.EPOCH_COMPLETED,
         handler=checkpoint_handler,
         to_save={
             'embedding': embedding_model,
@@ -222,6 +253,14 @@ def main():
                 timer.value(),
                 engine.state.output
             )
+        )
+
+    @trainer.on(Events.EPOCH_STARTED)
+    def log_learning_rate(engine):
+        tb_logger.writer.add_scalar(
+            f"learning_rate",
+            torch.tensor(scheduler.get_lr()),
+            global_step=engine.state.epoch
         )
 
     print("Running trainer.")

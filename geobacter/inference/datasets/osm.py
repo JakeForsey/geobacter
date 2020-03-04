@@ -1,11 +1,11 @@
 import asyncio
 from pathlib import Path
-from PIL import Image
 from PIL.Image import Image as PILImage
 import random
 from typing import Tuple
 
 import httpx
+import skimage.measure
 from shapely.geometry import Polygon
 import torch
 from torch.utils.data.dataset import Dataset
@@ -62,6 +62,7 @@ class OsmTileDataset(Dataset):
         self.positive_extents = [buffer_point(point, buffer) for point in positive_points]
         self.cache_dir = cache_dir
         self.client = httpx.AsyncClient()
+        self.index_to_entropy = {}
 
     def __len__(self):
         return self.sample_count
@@ -87,12 +88,27 @@ class OsmTileDataset(Dataset):
 
         return anchor, positive, negative
 
+    def anchor_entropy(self, index: int) -> float:
+        if index not in self.index_to_entropy:
+            async def _load_anchor():
+                return await get_extent(
+                    self.anchor_extents[index],
+                    cache_dir=self.cache_dir, zoom=16, client=self.client
+                )
+            loop = asyncio.get_event_loop()
+            task = loop.create_task(_load_anchor())
+            anchor = loop.run_until_complete(task)
+            self.index_to_entropy[index] = skimage.measure.shannon_entropy(anchor.convert('LA'))
+
+        return self.index_to_entropy[index]
+
     def load_triplet_images(self, index: int) -> Tuple[PILImage, PILImage, PILImage]:
         async def _load_triplet():
             a = await get_extent(
                 self.anchor_extents[index],
                 cache_dir=self.cache_dir, zoom=16, client=self.client
             )
+            self.index_to_entropy[index] = skimage.measure.shannon_entropy(a.convert('LA'))
             p = await get_extent(
                 self.positive_extents[index],
                 cache_dir=self.cache_dir, zoom=16, client=self.client

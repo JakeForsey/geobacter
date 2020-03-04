@@ -21,6 +21,7 @@ shapely = "*"
 utm = "*"
 flask-restful = "*"
 pytorch-ignite = "==0.4.0.dev20200122"
+scikit-image = "*"
 
 [requires]
 python_version = "3.7"

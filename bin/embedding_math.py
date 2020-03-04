@@ -12,7 +12,8 @@ from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.inference.datasets.osm import OsmTileDataset
 
 
-CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-218fbf4b-b33a-40eb-8929-3f006826c0a0_embedding_25000.pth'
+SAVE = False
+CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-667d4e74-24d8-4378-9058-037fc6682005_embedding_4692.pth'
 gdf = gpd.read_file("data/coastline/coastline.geojson")
 AOI = gdf.loc[gdf["adm0_a3"] == "GBR"].geometry.unary_union
 
@@ -149,7 +150,8 @@ def handle_arithmetic(expression: str, embeddings: List[np.ndarray], nn_model: N
     ).tolist()[0][1]
 
     plot_arithmetic(variable1_idx, operator, variable2_idx, result_idx)
-    plt.savefig(f"assets/arithmetic/{expression.replace(' ', '-')}.png")
+    if SAVE:
+        plt.savefig(f"assets/arithmetic/{expression.replace(' ', '-')}.png")
 
 
 def handle_interpolation(expression: str, embeddings: List[np.ndarray], nn_model: NearestNeighbors):
@@ -182,7 +184,8 @@ def handle_interpolation(expression: str, embeddings: List[np.ndarray], nn_model
         )
 
     plot_interpolation(interpolated_idxes)
-    plt.savefig(f"assets/interpolation/{expression.replace(' ', '-')}.png")
+    if SAVE:
+        plt.savefig(f"assets/interpolation/{expression.replace(' ', '-')}.png")
 
 
 def handle_neighbours(expression: str, embeddings: List[np.ndarray], nn_model: NearestNeighbors):
@@ -200,7 +203,8 @@ def handle_neighbours(expression: str, embeddings: List[np.ndarray], nn_model: N
     ).tolist()[0][1:]
 
     plot_neighbours(idx, neighbour_idxes)
-    plt.savefig(f"assets/nearest_neighbours/{expression.replace(' ', '-')}.png")
+    if SAVE:
+        plt.savefig(f"assets/nearest_neighbours/{expression.replace(' ', '-')}.png")
 
 
 def run(embeddings: List[np.ndarray], nn_model: NearestNeighbors):
