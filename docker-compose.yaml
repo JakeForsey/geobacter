@@ -13,7 +13,7 @@ services:
       # Expose postgres database
       # - "5432:5432"
     environment:
-      - THREADS=12
+      - THREADS=4
     command: "run"
 
 volumes:

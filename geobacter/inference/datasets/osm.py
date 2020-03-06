@@ -16,6 +16,7 @@ from torchvision.transforms import Compose
 from torchvision.transforms import Resize
 from torchvision.transforms import RandomHorizontalFlip
 from torchvision.transforms import RandomVerticalFlip
+from tqdm import tqdm
 
 from geobacter.inference.util import random_point
 from geobacter.inference.util import random_translation
@@ -50,11 +51,20 @@ class OsmTileDataset(Dataset):
             cache_dir: Path
     ):
         with extents_path.open("rb") as f:
-            self.anchor_extents, self.positive_extents = pickle.load(f)
+            anchor_extents, positive_extents = pickle.load(f)
 
+        self.anchor_extents = []
+        self.positive_extents = []
         self.cache_dir = cache_dir
         self.client = httpx.AsyncClient()
         self.index_to_entropy = {}
+
+        for a_extent, p_extent in tqdm(zip(anchor_extents, positive_extents), total=len(anchor_extents)):
+            if random.random() > 0.99 or extent_to_entropy(a_extent, self.cache_dir, self.client) > 1.8:
+                self.anchor_extents.append(a_extent)
+                self.positive_extents.append(p_extent)
+
+        print(len(self.anchor_extents))
 
     def __len__(self):
         return len(self.anchor_extents)
@@ -82,15 +92,11 @@ class OsmTileDataset(Dataset):
 
     def anchor_entropy(self, index: int) -> float:
         if index not in self.index_to_entropy:
-            async def _load_anchor():
-                return await get_extent(
-                    self.anchor_extents[index],
-                    cache_dir=self.cache_dir, zoom=16, client=self.client
-                )
-            loop = asyncio.get_event_loop()
-            task = loop.create_task(_load_anchor())
-            anchor = loop.run_until_complete(task)
-            self.index_to_entropy[index] = skimage.measure.shannon_entropy(anchor.convert('LA'))
+            self.index_to_entropy[index] = extent_to_entropy(
+                self.anchor_extents[index],
+                self.cache_dir,
+                self.client
+            )
 
         return self.index_to_entropy[index]
 
@@ -114,6 +120,19 @@ class OsmTileDataset(Dataset):
         loop = asyncio.get_event_loop()
         task = loop.create_task(_load_triplet())
         return loop.run_until_complete(task)
+
+
+def extent_to_entropy(extent: Extent, cache_dir: Path, client: httpx.AsyncClient) -> float:
+    async def _load_anchor():
+        return await get_extent(
+            extent,
+            cache_dir=cache_dir, zoom=16, client=client
+        )
+
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(_load_anchor())
+    anchor = loop.run_until_complete(task)
+    return skimage.measure.shannon_entropy(anchor.convert('LA'))
 
 
 def generate_extents(
