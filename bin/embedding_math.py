@@ -12,7 +12,7 @@ from geobacter.inference.datasets.osm import OsmTileDataset
 
 
 SAVE = False
-CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-667d4e74-24d8-4378-9058-037fc6682005_embedding_4692.pth'
+CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-8e986de3-b603-4fa8-a8a1-fc87f1d1812c_embedding_27888.pth'
 
 embedding_model = ResNetEmbedding(16)
 embedding_model.load_state_dict(torch.load(CHECKPOINT))
@@ -21,7 +21,7 @@ embedding_model.eval()
 embedding_model.cuda()
 
 dataset = OsmTileDataset(
-    extents_path=Path("data/extents/test.pickle"),
+    samples=None,  # TODO read samples,
     cache_dir=Path("data/cache")
 )
 

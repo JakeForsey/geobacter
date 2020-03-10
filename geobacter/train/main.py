@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 from uuid import uuid4
 
 import matplotlib
@@ -21,6 +22,7 @@ from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.train.loss import TripletLoss
 from geobacter.inference.datasets.osm import OsmTileDataset
 from geobacter.inference.datasets.osm import DENORMALIZE
+from geobacter.inference.datasets.sample import load_samples
 
 BATCH_SIZE = 48
 TRAIN_EPOCHS = 50
@@ -40,14 +42,17 @@ def main():
     triplet_model.cuda()
 
     print("Initialising training dataset.")
+
     train_dataset = OsmTileDataset(
-        extents_path=Path("data/extents/train.pickle"),
+        samples=[sample for sample in load_samples(Path("data/extents/train_1500000.json"))
+                 if random.random() > 0.99 or sample.anchor.entropy > 1.7],
         cache_dir=CACHE_DIR
     )
 
     print("Initialising testing dataset.")
     test_dataset = OsmTileDataset(
-        extents_path=Path("data/extents/test.pickle"),
+        samples=[sample for sample in load_samples(Path("data/extents/test_15000.json"))
+                 if random.random() > 0.99 or sample.anchor.entropy > 1.7],
         cache_dir=CACHE_DIR
     )
 
