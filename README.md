@@ -9,4 +9,8 @@ docker run \
     -v openstreetmap-data:/var/lib/postgresql/12/main \
     mapnik \
     import
+
+docker volume create openstreetmap-rendered-tiles
+
+docker-compose up
 ```
