@@ -94,6 +94,9 @@ class OsmTileDataset(Dataset):
         task = loop.create_task(_anchor_entropy())
         return loop.run_until_complete(task)
 
+    def sample(self, index: int) -> TripletSample:
+        return self.samples[index]
+
     def load_triplet_images(self, index: int) -> Tuple[PILImage, PILImage, PILImage]:
         async def _load_triplet():
             a = await get_extent(
