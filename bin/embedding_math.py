@@ -24,7 +24,7 @@ embedding_model.eval()
 embedding_model.cuda()
 
 dataset = OsmTileDataset(
-    samples=[sample for sample in load_samples(Path("data/extents/TODO.json"))
+    samples=[sample for sample in load_samples(Path("data/extents/embedding_math_200000.json"))
              if random.random() > 0.99 or sample.anchor.entropy > 1.7],
     cache_dir=CACHE_DIR
 )
