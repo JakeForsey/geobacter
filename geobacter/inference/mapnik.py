@@ -50,7 +50,7 @@ def extent_to_path(
         cache_dir: Path,
         zoom: int,
 ) -> Path:
-    return cache_dir / Path(f"{zoom}/{extent}.png")
+    return cache_dir / Path(f"{zoom}/{','.join([str(v) for v in extent])}.png")
 
 
 async def request_extent(extent: Extent, zoom: int, client: httpx.AsyncClient) -> 'Image':

@@ -72,7 +72,7 @@ def main():
 
     optimizer = optim.Adam(
         embedding_model.parameters(),
-        lr=1e-3
+        lr=1e-4
     )
     lr_scheduler = ExponentialLR(optimizer, 0.99)
 

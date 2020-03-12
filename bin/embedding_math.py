@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -6,13 +7,15 @@ import numpy as np
 from scipy.interpolate import interp1d
 from sklearn.neighbors import NearestNeighbors
 import torch
+from tqdm import trange
 
 from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.inference.datasets.osm import OsmTileDataset
-
+from geobacter.inference.datasets.sample import load_samples
 
 SAVE = False
-CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-8e986de3-b603-4fa8-a8a1-fc87f1d1812c_embedding_27888.pth'
+CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-c448224c-a38e-4c02-8b8c-572ff00e21db_embedding_45297.pth'
+CACHE_DIR = Path("data/cache")
 
 embedding_model = ResNetEmbedding(16)
 embedding_model.load_state_dict(torch.load(CHECKPOINT))
@@ -21,8 +24,9 @@ embedding_model.eval()
 embedding_model.cuda()
 
 dataset = OsmTileDataset(
-    samples=None,  # TODO read samples,
-    cache_dir=Path("data/cache")
+    samples=[sample for sample in load_samples(Path("data/extents/TODO.json"))
+             if random.random() > 0.99 or sample.anchor.entropy > 1.7],
+    cache_dir=CACHE_DIR
 )
 
 
@@ -32,14 +36,8 @@ class MismatchedExpression(Exception): pass
 def load_embeddings() -> List[np.ndarray]:
     print("Initialising embeddings.")
     embeddings = []
-    # for anchor, _, _ in (dataset[i] for i in range(100)):
-    for anchor, _, _ in (dataset[i] for i in range(len(dataset))):
-
-        if len(embeddings) % 100 == 0:
-            print(f"{len(embeddings)} / {len(dataset)}")
-
+    for anchor, _, _ in (dataset[i] for i in trange(len(dataset), desc="pre-loading embeddings")):
         anchor = anchor.unsqueeze(0).cuda()
-
         embeddings.append(
             embedding_model(anchor).squeeze().detach().cpu().numpy()
         )
@@ -166,7 +164,7 @@ def handle_interpolation(expression: str, embeddings: List[np.ndarray], nn_model
         axis=0
     )
 
-    interpolated_idxes = []
+    interpolated_idxes = [idx1]
     for i in range(0, steps + 1):
         interpolated_idxes.append(
             nn_model.kneighbors(
@@ -175,6 +173,7 @@ def handle_interpolation(expression: str, embeddings: List[np.ndarray], nn_model
                 return_distance=False
             ).tolist()[0][0]
         )
+    interpolated_idxes.append(idx2)
 
     plot_interpolation(interpolated_idxes)
     if SAVE:

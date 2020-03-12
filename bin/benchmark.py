@@ -5,7 +5,6 @@ from itertools import islice
 from functools import lru_cache
 import math
 from pathlib import Path
-from PIL import Image
 import random
 from typing import Iterable
 
@@ -13,11 +12,12 @@ import httpx
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 import torch
+from tqdm import tqdm
 
 from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.inference.mapnik import get_extent
@@ -26,8 +26,8 @@ from geobacter.inference.util import buffer_point
 from geobacter.inference.datasets.osm import BASE_TRANSFORMS
 
 
-CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-9e743660-309c-43fd-b50b-9efbc9bdde9d_embedding_100000.pth'
-HOUSE_PRICES = "data/benchmarks/house_prices/data.csv"
+CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-c448224c-a38e-4c02-8b8c-572ff00e21db_embedding_45297.pth'
+CACHE_DIR = Path("data/cache")
 TRAIN_SAMPLES = [10, 100, 1_000, 10_000]
 embedding_model = ResNetEmbedding(16)
 embedding_model.load_state_dict(torch.load(CHECKPOINT))
@@ -47,24 +47,23 @@ class Benchmark(ABC):
     def y(self) -> np.ndarray:
         pass
 
+    @property
     @abstractmethod
-    def _points(self):
+    def problem_type(self):
         pass
 
     @abstractmethod
-    def _cache_directory(self) -> Path:
+    def _points(self):
         pass
 
     @property
     @lru_cache()
     def embeddings(self) -> np.ndarray:
-        self._cache_directory().mkdir(exist_ok=True, parents=True)
-
-        async with httpx.AsyncClient() as client:
-            async def point_to_embedding(point):
-                image = get_extent(
+        async def point_to_embedding(point):
+            async with httpx.AsyncClient() as client:
+                image = await get_extent(
                     buffer_point(point, 100.0),
-                    self._cache_directory(),
+                    CACHE_DIR,
                     16,
                     client
                 )
@@ -72,13 +71,15 @@ class Benchmark(ABC):
                 image = image.cuda()
                 return embedding_model(image.unsqueeze(0)).detach().cpu().numpy()
 
-            def chunk(it, size):
-                it = iter(it)
-                return iter(lambda: tuple(islice(it, size)), ())
+        def chunk(it, size):
+            it = iter(it)
+            return iter(lambda: tuple(islice(it, size)), ())
 
-            loop = asyncio.get_event_loop()
-            embeddings = []
-            for points in chunk(self._points(), 10):
+        loop = asyncio.get_event_loop()
+        chunk_size = 10
+        embeddings = []
+        with tqdm(total=len(self._points())) as pbar:
+            for points in chunk(self._points(), chunk_size):
                 coroutines = [point_to_embedding(point) for point in points]
                 embeddings.extend(
                     loop.run_until_complete(
@@ -86,43 +87,21 @@ class Benchmark(ABC):
                     )
                 )
 
+                pbar.update(chunk_size)
+
         return np.concatenate(embeddings)
 
 
-class HousePriceBenchmark(Benchmark):
+class OutputAreaClassification(Benchmark):
     def __init__(self):
-        self.df = pd.read_csv(Path("data/benchmarks/house_prices/data.csv"))
-
-    @property
-    def X(self):
-        return self.df[["sqft_living", "bedrooms", "bathrooms"]]
-
-    @property
-    def y(self):
-        return self.df["price"]
-
-    def _points(self) -> Iterable[Point]:
-        return [(row["long"], row["lat"]) for idx, row in self.df.iterrows()]
-
-    def _cache_directory(self) -> Path:
-        return Path("data/cache/benchmarks/house_prices")
-
-
-class CarPriceBenchmark(Benchmark):
-    def __init__(self):
-        df = pd.read_csv(Path("data/benchmarks/car_prices/data.csv"))
-
-        self.df = df[
-            df["lat"].between(46.124742, 48.880009) &
-            df["long"].between(-124.472116, -117.176261)
-        ].copy()
+        self.df = pd.read_csv("data/benchmarks/output_area_classification/data.csv").sample(20_000, random_state=1)
 
     @property
     def X(self):
         X = self.df[[
-            "manufacturer",
-            "year",
-            "odometer",
+            "Region Name",
+            "Longitude",
+            "Latitude",
         ]].copy()
         numeric_dtypes = ['int8', 'int16', 'int32', 'int64', 'float16', 'float32', 'float64']
         categorical_columns = []
@@ -136,30 +115,30 @@ class CarPriceBenchmark(Benchmark):
         for col in categorical_columns:
             X[col] = LabelEncoder().fit_transform(X[col].values)
 
-        X['year'] = (X['year'] - 1900).astype(int)
-        X['odometer'] = X['odometer'].astype(int)
-
         return X.copy()
 
     @property
     def y(self):
-        return self.df["price"]
+        return LabelEncoder().fit_transform(self.df["Output Area Classification Name"].values)
+
+    @property
+    def problem_type(self):
+        return "classification"
 
     def _points(self) -> Iterable[Point]:
-        return [(row["long"], row["lat"]) for idx, row in self.df.iterrows()]
-
-    def _cache_directory(self) -> Path:
-        return Path("data/cache/benchmarks/car_prices")
+        return [(row["Longitude"], row["Latitude"]) for idx, row in self.df.iterrows()]
 
 
 def evaluate(benchmark: Benchmark, train_size: int, seed=1):
 
     def _score(X_train, X_test, y_train, y_test):
-        m = RandomForestRegressor()
+        m = RandomForestRegressor() if benchmark.problem_type == "regression" else RandomForestClassifier()
         m.fit(X_train, y_train)
 
         y_pred = m.predict(X_test)
-        return r2_score(y_test, y_pred)
+        from functools import partial
+        score_fn = r2_score if benchmark.problem_type == "regression" else partial(f1_score, average="macro")
+        return score_fn(y_test, y_pred)
 
     X_train, X_test, y_train, y_test, embeddings_train, embeddings_test = train_test_split(
         benchmark.X, benchmark.y, benchmark.embeddings,
@@ -170,7 +149,6 @@ def evaluate(benchmark: Benchmark, train_size: int, seed=1):
     print(f"Testing samples: {len(X_test)}")
 
     baseline_score = _score(X_train, X_test, y_train, y_test)
-
     embeddings_score = _score(embeddings_train, embeddings_test, y_train, y_test)
 
     combined_train = np.concatenate([embeddings_train, X_train], axis=1)
@@ -186,8 +164,7 @@ def evaluate(benchmark: Benchmark, train_size: int, seed=1):
 
 
 BENCHMARKS = {
-    "HousePrice": HousePriceBenchmark,
-    "CarPrice": CarPriceBenchmark
+    "OutputAreaClassification": OutputAreaClassification,
 }
 
 
@@ -195,13 +172,12 @@ def benchmark_from_name(name: str):
     return BENCHMARKS[name]()
 
 
-def run():
+def run_all():
     random.seed()
 
     for name in BENCHMARKS:
         benchmark = benchmark_from_name(name)
 
-        # results = [{'train_size': 10, 'baseline_score': 205161936.92804074, 'embeddings_score': 214600590.65082082, 'combined_score': 210226430.32083264}, {'train_size': 100, 'baseline_score': 165026683.71304765, 'embeddings_score': 195860592.89620247, 'combined_score': 149466121.35509643}, {'train_size': 1000, 'baseline_score': 127832818.05935825, 'embeddings_score': 154662908.88608417, 'combined_score': 118873809.24728106}, {'train_size': 10000, 'baseline_score': 88796490.04219109, 'embeddings_score': 138480576.19776294, 'combined_score': 83991446.87797993}, {'train_size': 10, 'baseline_score': 168334755.54410255, 'embeddings_score': 234727750.14422667, 'combined_score': 203676938.43009853}, {'train_size': 100, 'baseline_score': 163084136.47468862, 'embeddings_score': 193718346.9897234, 'combined_score': 149031993.87075284}, {'train_size': 1000, 'baseline_score': 127349466.18659735, 'embeddings_score': 152614545.04581943, 'combined_score': 120527263.51661347}, {'train_size': 10000, 'baseline_score': 80592420.19248538, 'embeddings_score': 136406282.38250282, 'combined_score': 82427695.7411659}, {'train_size': 10, 'baseline_score': 234150692.57971254, 'embeddings_score': 261371957.14583448, 'combined_score': 202052559.2870032}, {'train_size': 100, 'baseline_score': 171358586.88289893, 'embeddings_score': 189243108.2399285, 'combined_score': 151590432.94680554}, {'train_size': 1000, 'baseline_score': 159044879.2130711, 'embeddings_score': 160645831.08412796, 'combined_score': 118286496.13325292}, {'train_size': 10000, 'baseline_score': 88006314.70122786, 'embeddings_score': 138165216.84902355, 'combined_score': 85791009.52635176}]
         results = []
         for seed in [1, 2, 3]:
             for train_size in TRAIN_SAMPLES:
@@ -270,4 +246,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    run_all()
