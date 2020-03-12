@@ -1,5 +1,5 @@
-import collections
 from pathlib import Path
+import random
 from uuid import uuid4
 
 import matplotlib
@@ -15,68 +15,66 @@ from sklearn.manifold import TSNE
 import torch
 from torch import optim
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import WeightedRandomSampler
+from torch.optim.lr_scheduler import ExponentialLR
 
-from geobacter.inference.model.triplet import ResNetTriplet
-from geobacter.inference.model.triplet import ResNetEmbedding
+from geobacter.inference.networks.resnet import ResNetTriplet
+from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.train.loss import TripletLoss
-from geobacter.inference.dataset.osm import OsmTileDataset
-from geobacter.inference.dataset.osm import DENORMALIZE
+from geobacter.inference.datasets.osm import OsmTileDataset
+from geobacter.inference.datasets.osm import DENORMALIZE
+from geobacter.inference.datasets.sample import load_samples
 
-BATCH_SIZE = 32
+BATCH_SIZE = 48
 TRAIN_EPOCHS = 50
-DATA_LOADER_WORKERS = 2
+CACHE_DIR = Path("data/cache")
 matplotlib.use('Agg')
 
 
 def main():
     run_id = str(uuid4())
 
-    print("Initialising Embedding network.")
+    print("Initialising embedding network.")
     embedding_model = ResNetEmbedding(16)
     embedding_model.cuda()
 
-    print("Initialising Triplet network.")
+    print("Initialising triplet network.")
     triplet_model = ResNetTriplet(embedding_model)
     triplet_model.cuda()
 
     print("Initialising training dataset.")
+
     train_dataset = OsmTileDataset(
-        Path("data/cache/train"),
-        100_000
+        samples=[sample for sample in load_samples(Path("data/extents/train_1500000.json"))
+                 if random.random() > 0.99 or sample.anchor.entropy > 1.7],
+        cache_dir=CACHE_DIR
     )
 
     print("Initialising testing dataset.")
     test_dataset = OsmTileDataset(
-        Path("data/cache/test"),
-        2_000
+        samples=[sample for sample in load_samples(Path("data/extents/test_15000.json"))
+                 if random.random() > 0.99 or sample.anchor.entropy > 1.7],
+        cache_dir=CACHE_DIR
     )
 
-    # unique_colours = [train_dataset.unique_colours(i) for i in range(len(train_dataset))]
-    # counter = collections.Counter(unique_colours)
-    # weights = [1 / counter[file_size] for file_size in unique_colours]
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
         pin_memory=True,
-        num_workers=DATA_LOADER_WORKERS,
-        # sampler=WeightedRandomSampler(
-        #     weights,
-        #     len(train_dataset)
-        # )
+        num_workers=4,
     )
     test_loader = DataLoader(
         test_dataset,
         batch_size=1,
-        num_workers=DATA_LOADER_WORKERS
+        num_workers=4
     )
 
-    triplet_loss = TripletLoss(1)
+    triplet_loss = TripletLoss(margin=1)
 
     optimizer = optim.Adam(
         embedding_model.parameters(),
         lr=1e-4
     )
+    lr_scheduler = ExponentialLR(optimizer, 0.99)
 
     def train_step(engine, batch):
         embedding_model.train()
@@ -94,6 +92,7 @@ def main():
 
         loss.backward()
         optimizer.step()
+        lr_scheduler.step()
 
         return {
             'loss': loss.item(),
@@ -112,21 +111,19 @@ def main():
         event_name=Events.ITERATION_COMPLETED
     )
 
-    @trainer.on(Events.EPOCH_STARTED)
-    def add_images(engine):
-        for idx, sample in enumerate(test_loader):
-            if idx > 9:
-                break
-            anchor, positive, negative = sample
-            anchor = DENORMALIZE(anchor.squeeze())
-            positive = DENORMALIZE(positive.squeeze())
-            negative = DENORMALIZE(negative.squeeze())
+    for idx, sample in enumerate(test_loader):
+        if idx > 9:
+            break
+        anchor, positive, negative = sample
+        anchor = DENORMALIZE(anchor.squeeze())
+        positive = DENORMALIZE(positive.squeeze())
+        negative = DENORMALIZE(negative.squeeze())
 
-            tb_logger.writer.add_image(
-                f"test_image_{idx}",
-                torch.cat([anchor, positive, negative], 2),
-                global_step=engine.state.epoch
-            )
+        tb_logger.writer.add_image(
+            f"test_image_{idx}",
+            torch.cat([anchor, positive, negative], 2),
+            global_step=0
+        )
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def test(engine):
@@ -147,8 +144,8 @@ def main():
                 loss = triplet_loss(anchor_embedding, positive_embedding, negative_embedding)
                 loss_total += loss.item()
 
-                # 200 is a good number of images to plot
-                if len(embeddings) < 200:
+                # 300 is a good number of images to plot
+                if len(embeddings) < 300:
                     embeddings.append(
                         anchor_embedding.squeeze().detach().cpu().numpy()
                     )
@@ -198,7 +195,7 @@ def main():
         require_empty=False
     )
     trainer.add_event_handler(
-        event_name=Events.EPOCH_COMPLETED(every=2),
+        event_name=Events.EPOCH_COMPLETED,
         handler=checkpoint_handler,
         to_save={
             'embedding': embedding_model,
