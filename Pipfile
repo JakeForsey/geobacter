@@ -7,23 +7,23 @@ verify_ssl = true
 jupyter = "*"
 pandas = "*"
 sklearn = "*"
-pytorch-ignite = "*"
 matplotlib = "*"
 geopandas = "*"
 tensorboard = "*"
 geojson = "*"
+pytorch-ignite = "==0.4.0.dev20200122"
+pytorch-metric-learning = "*"
+tqdm = "*"
 
 [packages]
 torch = "*"
 torchvision = "*"
-httpx = "*"
+httpx = "==0.11.1"
 shapely = "*"
 utm = "*"
 flask-restful = "*"
-pytorch-ignite = "==0.4.0.dev20200122"
 scikit-image = "*"
-tqdm = "*"
-pytorch-metric-learning = "*"
+gunicorn = "*"
 
 [requires]
 python_version = "3.7"

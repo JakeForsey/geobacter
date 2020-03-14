@@ -1,0 +1,6 @@
+assets/*
+bin/*
+checkpoints/*
+!checkpoints/ResNetTriplet-OsmTileDataset-c448224c-a38e-4c02-8b8c-572ff00e21db_embedding_45297.pth
+data/*
+tensorboard/*

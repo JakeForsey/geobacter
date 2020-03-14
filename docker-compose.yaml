@@ -11,8 +11,6 @@ services:
       - openstreetmap-rendered-tiles:/var/lib/mod_tile
     ports:
       - "8080:80"
-      # Expose postgres database
-      # - "5432:5432"
     environment:
       - THREADS=8
     command: "run"
