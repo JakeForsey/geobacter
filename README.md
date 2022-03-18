@@ -73,6 +73,13 @@ export GEOBACTER_TOKEN=<token>
 gunicorn -b 0.0.0.0:8000 --workers 4 --timeout 10 geobacter.inference.api:app
 ```
 
+(optional) Get the embedding for Notre-Dame
+```bash
+curl "localhost:8000/embeddings?lon=49.609598&lat=6.131606&token=abc"
+```
+```bash:
+{"embeddings": [[-0.34813380241394043, -0.18550226092338562, -0.14799177646636963, -0.387213796377182, 0.3064960837364197, -0.4037243723869324, -0.10650328546762466, -0.21765653789043427, 0.3168793022632599, -0.16763810813426971, 0.18249128758907318, 0.15798911452293396, 0.07749254256486893, 0.09545111656188965, 0.468732625246048, -0.1452517807483673]], "checkpoint": "checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_4974.pth", "lon": 49.609598, "lat": 6.131606}
+```
 
 ### Results
 
