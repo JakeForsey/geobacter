@@ -2,10 +2,7 @@ version: '3'
 
 services:
   mapnik:
-    build:
-      context: geobacter/mapnik/
-      dockerfile: Dockerfile
-    image: mapnik
+    image: overv/openstreetmap-tile-server
     volumes:
       - openstreetmap-data:/var/lib/postgresql/12/main
       - openstreetmap-rendered-tiles:/var/lib/mod_tile

@@ -17,16 +17,16 @@ from geobacter.inference.util import random_point, random_translation, buffer_po
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample-count", type=int)
-    parser.add_argument("--buffer", type=float)
-    parser.add_argument("--distance", type=float)
-    parser.add_argument("--seed", type=float)
+    parser.add_argument("--buffer", type=float, default=100)
+    parser.add_argument("--distance", type=float, default=500)
+    parser.add_argument("--seed", type=float, default=1)
     parser.add_argument("--path", type=Path)
     parser.add_argument("--cache-dir", type=Path, default=Path("data/cache"))
-
+    parser.add_argument("--country-code", type=str, default="LUX")
     args = parser.parse_args()
 
     gdf = gpd.read_file("data/coastline/coastline.geojson")
-    aoi = gdf.loc[gdf["adm0_a3"] == "GBR"].geometry.unary_union
+    aoi = gdf.loc[gdf["adm0_a3"] == "LUX"].geometry.unary_union
 
     semaphore = asyncio.BoundedSemaphore(10)
 
