@@ -9,3 +9,5 @@ tensorboard/*
 !checkpoints/.gitkeep
 !checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_5803.pth
 !tensorboard/.gitkeep
+
+**__pycache__
