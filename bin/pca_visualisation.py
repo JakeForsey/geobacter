@@ -14,7 +14,7 @@ from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.inference.datasets.osm import OsmTileDataset
 from geobacter.inference.datasets.sample import load_samples
 
-CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-fc28628b-7ea6-423a-aae3-32db7a187f1b_embedding_116496.pth'
+CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-d5abe7e5-3ac9-4b24-8e27-cd8d432a7ec9_embedding_1105.pth'
 CACHE_DIR = Path("data/cache")
 
 embedding_model = ResNetEmbedding(16)
@@ -24,7 +24,7 @@ embedding_model.eval()
 embedding_model.cuda()
 
 dataset = OsmTileDataset(
-    samples=[sample for sample in load_samples(Path("data/extents/embedding_math_200000.json"))
+    samples=[sample for sample in load_samples(Path("data/extents/test_10000.json"))
              if random.random() > 0.99 or sample.anchor.entropy > 1.7],
     cache_dir=CACHE_DIR
 )

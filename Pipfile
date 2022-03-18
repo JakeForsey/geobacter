@@ -16,7 +16,7 @@ pytorch-metric-learning = "*"
 tqdm = "*"
 
 [packages]
-torch = "*"
+torch = "==1.11.0"
 torchvision = "*"
 httpx = "==0.11.1"
 shapely = "*"
