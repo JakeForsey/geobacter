@@ -72,3 +72,23 @@ Start the python service
 export GEOBACTER_TOKEN=<token>
 gunicorn -b 0.0.0.0:8000 --workers 4 --timeout 10 geobacter.inference.api:app
 ```
+
+
+### Results
+
+Semantically similar locations are embedded together
+
+<img src="assets/readme/embeddings.png" width="80%">
+
+The embedding space can be interpolated
+
+<img src="assets/readme/3-interp-4.png" width="80%">
+
+<img src="assets/readme/9-interp-10.png" width="80%">
+
+
+Similar locations can be queried
+
+<img src="assets/readme/19133-5.png" width="80%" >
+
+<img src="assets/readme/16798-5.png" width="80%">
