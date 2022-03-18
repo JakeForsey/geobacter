@@ -14,7 +14,7 @@ from geobacter.inference.networks.resnet import ResNetEmbedding
 from geobacter.inference.datasets.osm import OsmTileDataset
 from geobacter.inference.datasets.sample import load_samples
 
-CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-d5abe7e5-3ac9-4b24-8e27-cd8d432a7ec9_embedding_1105.pth'
+CHECKPOINT = 'checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_4974.pth'
 CACHE_DIR = Path("data/cache")
 
 embedding_model = ResNetEmbedding(16)
