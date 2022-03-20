@@ -24,6 +24,7 @@ utm = "*"
 flask-restful = "*"
 scikit-image = "*"
 gunicorn = "*"
+folium = "*"
 
 [requires]
 python_version = "3.7"
