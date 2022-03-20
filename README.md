@@ -75,10 +75,10 @@ gunicorn -b 0.0.0.0:8000 --workers 4 --timeout 10 geobacter.inference.api:app
 
 (optional) Get the embedding for Notre-Dame
 ```bash
-curl "localhost:8000/embeddings?lon=49.609598&lat=6.131606&token=<token>"
+curl "localhost:8000/embeddings?lat=49.609598&lon=6.131606&token=<token>"
 ```
 ```bash:
-{"embeddings": [[-0.34813380241394043, -0.18550226092338562, -0.14799177646636963, -0.387213796377182, 0.3064960837364197, -0.4037243723869324, -0.10650328546762466, -0.21765653789043427, 0.3168793022632599, -0.16763810813426971, 0.18249128758907318, 0.15798911452293396, 0.07749254256486893, 0.09545111656188965, 0.468732625246048, -0.1452517807483673]], "checkpoint": "checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_4974.pth", "lon": 49.609598, "lat": 6.131606}
+{"embeddings": [[0.12629294395446777, 0.5683436393737793, 0.9822958111763, 0.38620898127555847, -1.2079272270202637, 0.16978177428245544, -0.3008042275905609, 0.06522990763187408, 0.5405853390693665, -0.8018991947174072, 0.42124632000923157, 0.6691603064537048, -0.40959250926971436, -0.18567749857902527, -0.017753595486283302, 0.3173545002937317]], "checkpoint": "checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_41450.pth", "lon": 6.131606, "lat": 49.609598}
 ```
 
 ### Results
@@ -99,3 +99,16 @@ Similar locations can be queried
 <img src="assets/readme/19133-5.png" width="80%" >
 
 <img src="assets/readme/16798-5.png" width="80%">
+
+
+### Examples
+
+Use the api to characterise a pre-created route.
+```bash
+examples/api.py
+```
+
+Use a checkpoint to characterise a large number of samples.
+```bash
+examples/checkpoint.py
+```

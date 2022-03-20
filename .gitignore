@@ -7,7 +7,7 @@ tensorboard/*
 !data/osm/.gitkeep
 !data/osm/luxembourg-latest.osm.pbf
 !checkpoints/.gitkeep
-!checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_5803.pth
+!checkpoints/ResNetTriplet-OsmTileDataset-e393fd34-aa3c-4743-b270-e7f0d895b0a8_embedding_41450.pth
 !tensorboard/.gitkeep
 
 **__pycache__
