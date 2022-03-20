@@ -68,7 +68,7 @@ class Embeddings(Resource):
             "checkpoint": CHECKPOINT,
             "lon": point[0],
             "lat": point[1],
-            "image_url": f"image?lon={point[0]},lat={point[1]},token={args.token}"
+            "image_url": f"image?lon={point[0]}&lat={point[1]}&token={args.token}"
         }
 
 
